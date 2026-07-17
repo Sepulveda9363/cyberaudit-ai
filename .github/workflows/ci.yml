@@ -1,0 +1,6 @@
+- name: Run tests with pytest
+      env:
+        PYTHONPATH: .
+      run: |
+        pytest
+        
