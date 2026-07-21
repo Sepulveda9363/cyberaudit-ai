@@ -1,0 +1,16 @@
+# Modelamiento de Amenazas - CyberAudit AI 🛡️
+
+Este documento detalla el análisis de seguridad realizado sobre la arquitectura de **CyberAudit AI** utilizando la metodología **STRIDE** de Microsoft para el **Hito 3**. El objetivo es identificar vectores de ataque potenciales en nuestro sistema RAG local y definir los controles de mitigación correspondientes.
+
+---
+
+## 🎯 Matriz de Amenazas y Mitigaciones (STRIDE)
+
+| Categoría | Amenaza Específica | Impacto en el Sistema | Mitigación Implementada / Propuesta |
+| :--- | :--- | :--- | :--- |
+| **S**poofing *(Suplantación)* | Un atacante externo intenta suplantar las peticiones del cliente o inyectar llamadas falsas a la API. | Ejecución de consultas no autorizadas consumiendo recursos del LLM. | **Propuesta:** Implementación de autenticación mediante llaves de API (`X-API-Key`) validadas en un Middleware de FastAPI antes de procesar el RAG. |
+| **T**ampering *(Alteración)* | Modificación directa de los vectores en la carpeta `/data` (ChromaDB) o de los PDFs originales por un malware local. | El LLM entrega plazos o normativas falsas (ej. alterar las 3 horas del Art. 9°), induciendo a fallas legales en la auditoría. | **Implementada:** *Hardening* en `Dockerfile`. La aplicación corre bajo `appuser` sin privilegios de *root*, aislando el sistema de archivos del contenedor. |
+| **R**epudiation *(Repudio)* | Un usuario realiza consultas críticas o maliciosas y niega haberlas hecho, al no existir trazabilidad de auditoría. | Imposibilidad de realizar análisis forense posterior a un incidente de seguridad interno. | **Propuesta:** Configuración de un sistema de *logging* estructurado en FastAPI que registre hashes anónimos de las consultas en los eventos del contenedor. |
+| **I**nformation Disclosure *(Fuga de Información)* | Ataques de *Prompt Injection* orientados a extraer el "System Prompt" base o saltarse las restricciones del RAG. | Exposición de la propiedad intelectual del backend y vulnerabilidades de la estructura del prompt. | **Implementada:** Aislamiento del input mediante plantillas estrictas de sistema (*System Prompts* blindados) e inyección de contexto controlada por backend en FastAPI. |
+| **D**enial of Service *(Denegación de Servicio)* | Envío masivo y concurrentes de solicitudes HTTP POST al endpoint `/api/ask`. | Saturación de la CPU/VRAM del host físico por la carga de procesamiento de Ollama (Llama 3.2), congelando el servidor. | **Propuesta:** Integración de la librería `slowapi` en FastAPI para establecer un límite de peticiones (*Rate Limiting*) drástico (ej. 5 peticiones por minuto por IP). |
+| **E**levation of Privilege *(Elevación de Privilegios)* | Un atacante explota una vulnerabilidad en FastAPI (ej. ejecución remota de código) para tomar el control del entorno. | Si el contenedor corre como root, el atacante compromete los recursos del host de Docker y la red interna. | **Implementada:** Principio de menor privilegio en el `Dockerfile` (`USER appuser`). El proceso de la API carece de permisos administrativos para escalar al host. |
