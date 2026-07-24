@@ -1,12 +1,53 @@
+# Git
 .git
 .gitignore
-.venv
-venv
-ENV/
+
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.pytest_cache
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Datos crudos (NO van en la imagen)
+data/raw/
 data/processed/
+*.pdf
+
+# Logs locales
+logs/
 *.log
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# CI/CD
+.github/
+
+# Documentación grande
+*.md
+!README.md
+!STRIDE.md
