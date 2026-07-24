@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Set
 
-import fitz  # PyMuPDF
+from pypdf import PdfReader
 
 # ───────────────────────────────────────────────
 # CONFIGURACIÓN
@@ -21,11 +21,10 @@ RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
 OUTPUT_FILE = PROCESSED_DIR / "rag_chunks.json"
 
-CHUNK_SIZE = 800        # Reducido para chunks más precisos (mejor retrieval)
-CHUNK_OVERLAP = 150     # Solapamiento conservador
-MAX_CHUNK_SIZE = 1200   # Límite duro de seguridad (evita prompts gigantes)
+CHUNK_SIZE = 800
+CHUNK_OVERLAP = 150
+MAX_CHUNK_SIZE = 1200
 
-# Logging estructurado (formato JSON-friendly para observabilidad)
 logging.basicConfig(
     level=logging.INFO,
     format='{"timestamp":"%(asctime)s","level":"%(levelname)s","message":"%(message)s"}',
@@ -38,13 +37,8 @@ logger = logging.getLogger(__name__)
 # ───────────────────────────────────────────────
 
 def detectar_normativa(nombre_archivo: str) -> Dict[str, str]:
-    """
-    Clasifica el documento según su nombre para enriquecer los metadatos.
-    Permite filtrar consultas RAG por tipo, organismo o país.
-    """
     nombre = nombre_archivo.lower()
     
-    # Mapeo de patrones → metadatos
     reglas = [
         (r"ley-?21663|ley marco", {"tipo": "Ley", "pais": "Chile", "tema": "Ciberseguridad", "organismo": "Ministerio del Interior"}),
         (r"ley-?21719", {"tipo": "Ley", "pais": "Chile", "tema": "Ciberseguridad", "organismo": "Congreso Nacional"}),
@@ -66,31 +60,26 @@ def detectar_normativa(nombre_archivo: str) -> Dict[str, str]:
     return {"tipo": "Documento", "tema": "General", "pais": "Desconocido", "organismo": "Desconocido"}
 
 # ───────────────────────────────────────────────
-# EXTRACCIÓN DE TEXTO
+# EXTRACCIÓN DE TEXTO CON PYPDF
 # ───────────────────────────────────────────────
 
 def extraer_paginas_pdf(pdf_path: Path) -> List[Dict]:
-    """
-    Extrae texto página por página usando PyMuPDF.
-    Retorna lista de dicts con page_num y text.
-    """
     paginas = []
     try:
-        doc = fitz.open(str(pdf_path))
+        reader = PdfReader(str(pdf_path))
+        doc_name = pdf_path.stem
         
-        for num_pag, pagina in enumerate(doc, start=1):
-            texto = pagina.get_text("text")
-            # Sanitización básica: eliminar espacios múltiples y caracteres de control
-            texto_limpio = re.sub(r'\s+', ' ', texto)
+        for i, page in enumerate(reader.pages, start=1):
+            texto = page.extract_text()
+            texto_limpio = re.sub(r'\s+', ' ', texto) if texto else ""
             texto_limpio = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', texto_limpio)
             
             if texto_limpio.strip():
                 paginas.append({
-                    "page": num_pag,
+                    "page": i,
                     "text": texto_limpio.strip()
                 })
         
-        doc.close()
         logger.info(f"✅ {pdf_path.name}: {len(paginas)} páginas extraídas")
         return paginas
         
@@ -99,21 +88,15 @@ def extraer_paginas_pdf(pdf_path: Path) -> List[Dict]:
         return []
 
 # ───────────────────────────────────────────────
-# CHUNKING INTELIGENTE (corte en oraciones)
+# CHUNKING INTELIGENTE
 # ───────────────────────────────────────────────
 
 def crear_chunks(paginas: List[Dict], source_name: str) -> List[Dict]:
-    """
-    Divide el texto en chunks respetando límites de oración cuando es posible.
-    Cada chunk incluye metadatos enriquecidos y un ID determinístico.
-    """
     if not paginas:
         return []
     
-    # Detectar metadatos de la normativa desde el nombre del archivo
     meta_normativa = detectar_normativa(source_name)
     
-    # Consolidar texto completo con mapa de páginas
     texto_completo = ""
     mapa_paginas = []
     
@@ -130,36 +113,29 @@ def crear_chunks(paginas: List[Dict], source_name: str) -> List[Dict]:
     while i < len(texto_completo):
         fin_chunk = min(i + CHUNK_SIZE, len(texto_completo))
         
-        # Estrategia de corte inteligente: buscar fin de oración/párrafo
         if fin_chunk < len(texto_completo):
-            # Buscar el último punto seguido de espacio en los próximos 200 caracteres
-            ventana_busqueda = texto_completo[fin_chunk:min(fin_chunk + 200, len(texto_completo))]
-            ultimo_punto = ventana_busqueda.rfind('. ')
-            
+            ventana = texto_completo[fin_chunk:min(fin_chunk + 200, len(texto_completo))]
+            ultimo_punto = ventana.rfind('. ')
             if ultimo_punto != -1:
-                fin_chunk += ultimo_punto + 1  # +1 para incluir el punto
+                fin_chunk += ultimo_punto + 1
             else:
-                # Fallback: buscar último espacio
-                sub_texto = texto_completo[i:fin_chunk]
-                ultimo_espacio = sub_texto.rfind(' ')
-                if ultimo_espacio > CHUNK_SIZE * 0.5:  # Solo si no recortamos demasiado
+                sub = texto_completo[i:fin_chunk]
+                ultimo_espacio = sub.rfind(' ')
+                if ultimo_espacio > CHUNK_SIZE * 0.5:
                     fin_chunk = i + ultimo_espacio
         
-        # Aplicar límite duro de seguridad
         fin_chunk = min(fin_chunk, i + MAX_CHUNK_SIZE)
-        
         fragmento = texto_completo[i:fin_chunk].strip()
+        
         if not fragmento:
             i += (CHUNK_SIZE - CHUNK_OVERLAP)
             continue
         
-        # Determinar páginas asociadas
         paginas_asociadas: Set[int] = set()
         for mapeo in mapa_paginas:
             if not (fin_chunk <= mapeo["inicio"] or i >= mapeo["fin"]):
                 paginas_asociadas.add(mapeo["page"])
         
-        # Generar ID determinístico (evita duplicados en re-ingestas)
         id_hash = hashlib.sha256(
             f"{source_name}:{sorted(paginas_asociadas)}:{fragmento[:100]}".encode()
         ).hexdigest()[:16]
@@ -173,7 +149,7 @@ def crear_chunks(paginas: List[Dict], source_name: str) -> List[Dict]:
                 "char_start": i,
                 "char_end": fin_chunk,
                 "chunk_index": chunk_counter,
-                **meta_normativa  # Unpack de tipo, pais, tema, organismo
+                **meta_normativa
             }
         })
         
@@ -181,9 +157,8 @@ def crear_chunks(paginas: List[Dict], source_name: str) -> List[Dict]:
         
         if fin_chunk >= len(texto_completo):
             break
-            
         i += (fin_chunk - i - CHUNK_OVERLAP)
-        if i <= 0:  # Seguridad anti-loop infinito
+        if i <= 0:
             i = fin_chunk
     
     return chunks
@@ -209,20 +184,18 @@ def main():
         
         paginas = extraer_paginas_pdf(archivo)
         if not paginas:
-            logger.warning(f"   ⚠️ Sin contenido extraído (¿PDF escaneado/imagen?)")
+            logger.warning(f"   ⚠️ Sin contenido extraído")
             continue
         
         chunks = crear_chunks(paginas, archivo.name)
         todos_los_chunks.extend(chunks)
         logger.info(f"   📄 {len(chunks)} chunks generados")
     
-    # Guardar JSON intermedio
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(todos_los_chunks, f, ensure_ascii=False, indent=2)
     
-    logger.info(f"\n🎉 Ingesta completa: {len(todos_los_chunks)} chunks guardados en {OUTPUT_FILE}")
+    logger.info(f"\n🎉 Ingesta completa: {len(todos_los_chunks)} chunks guardados")
     
-    # Resumen por tipo de normativa
     resumen = {}
     for c in todos_los_chunks:
         tipo = c["metadata"].get("tipo", "Desconocido")

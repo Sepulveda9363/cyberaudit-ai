@@ -9,6 +9,7 @@ import json
 import hashlib
 import logging
 import time
+import hmac
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
@@ -204,9 +205,8 @@ security = HTTPBearer()
 
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    # Timing-safe comparison para prevenir timing attacks
-    if not hashlib.compare_digest(token, API_KEY):
-        logger.warning(f"Intento de autenticación fallido. Token hash: {hashlib.sha256(token.encode()).hexdigest()[:16]}")
+    if not hmac.compare_digest(token, API_KEY):
+        logger.warning(f"Intento de autenticación fallido...")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API Key inválida",
