@@ -1,75 +1,165 @@
 # CyberAudit AI 🛡️🤖
-> **Asistente de Auditoría Avanzado con RAG Local para Normativas de Ciberseguridad y Controles CIS**
 
-CyberAudit AI es una solución de software diseñada bajo criterios de **Seguridad por Diseño (Security by Design)** que implementa una arquitectura de **Generación Aumentada por Recuperación (RAG)** de ejecución 100% local. El sistema actúa como un consultor automatizado experto en la legislación de ciberseguridad chilena e infraestructura crítica (Ley Marco Nº 21.663) y marcos de control internacionales como CIS Controls v8.
+> **Asistente de Auditoría Avanzado con RAG Local para Normativas de Ciberseguridad**
 
----
-
-## 🏗️ Arquitectura del Sistema (RAG Local Segura)
-
-Para garantizar la confidencialidad, soberanía de datos y evitar riesgos de fuga de información hacia APIs de terceros (como OpenAI o Anthropic), todo el procesamiento se ejecuta en el host local:
-
-1. **Capa de Ingesta (Retrieval):** Los cuerpos legales (PDF) son segmentados y vectorizados mediante el modelo embebido multilingüe `all-MiniLM-L6-v2`.
-2. **Base de Datos Vectorial:** Los vectores y sus metadatos se indexan de manera persistente en una instancia local de **ChromaDB**.
-3. **Filtro Avanzado e Inyección de Contexto:** Una capa intermedia en FastAPI intercepta las consultas analíticas críticas (ej. plazos legales de reporte) aplicando filtros de metadatos algorítmicos para forzar la recuperación exacta de los artículos correspondientes.
-4. **Capa de Generación (LLM Local):** Orquestado a través de **Ollama**, el modelo cuántico **Llama 3.2 (3B)** procesa el prompt del sistema blindado para generar respuestas estructuradas en formato JSON técnico con citas explícitas de fuentes y páginas.
+CyberAudit AI es una solución de software diseñada bajo criterios de **Seguridad por Diseño (Security by Design)** que implementa una arquitectura de **Generación Aumentada por Recuperación (RAG)** de ejecución 100% local. El sistema actúa como un consultor automatizado experto en la legislación de ciberseguridad chilena (Ley Marco Nº 21.663, Ley Nº 21.719) y marcos de control internacionales (CIS Controls v8, ISO 27001/27002, NIST, OWASP).
 
 ---
 
-## 📦 Docker & Hardening (Hito 2)
+## 🏗️ Decisiones de Arquitectura
 
-El servicio ha sido completamente contenedorizado siguiendo directrices de robustecimiento (*hardening*) para despliegues seguros en entornos institucionales:
+### ¿Por qué RAG local en vez de API externa (OpenAI/Anthropic)?
+- **Soberanía de datos:** Las normativas legales no salen del host.
+- **Cumplimiento:** Evita fuga de información hacia terceros.
+- **Costo:** Sin consumo de tokens por consulta.
+- **Riesgo:** Mitiga dependencia de proveedores externos.
 
-* **Minimización de Superficie de Ataque:** Uso de una imagen base optimizada `python:3.10-slim`.
-* **Principio de Menor Privilegio (Non-Root):** El contenedor no se ejecuta como `root`. Se crea un usuario de sistema dedicado (`appuser`) con permisos restringidos sobre el directorio `/app`.
-* **Aislamiento de Red:** Mapeo controlado del puerto de servicio (`8000:8000`) utilizando un puente de red dinámico (`host.docker.internal`) para comunicarse de forma segura con el backend de Ollama en el host.
+### ¿Por qué ChromaDB?
+- Base vectorial **ligera y embebida**, no requiere servidor externo.
+- Soporta **filtros de metadatos** (por tipo de normativa, país, organismo).
+- Persistencia en disco, ideal para contenedores.
+
+### ¿Por qué Llama 3.2 (3B) vía Ollama?
+- **Modelo cuantizado** que corre en CPU/GPU consumer.
+- **3B parámetros** es suficiente para respuestas estructuradas sobre normativa.
+- **Ollama** simplifica el despliegue local del modelo.
+
+### ¿Por qué FastAPI + Pydantic?
+- Validación automática de inputs (incluye anti-prompt injection).
+- Documentación interactiva Swagger UI incluida.
+- Async nativo, ideal para I/O con Ollama.
+
+---
+
+## 📦 Arquitectura del Sistema
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   PDFs (data/)  │────▶│  preprocess.py   │────▶│ rag_chunks.json │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+│
+┌─────────────────┐     ┌──────────────────┐              │
+│   ChromaDB      │◀────│ store_vectors.py │◀─────────────┘
+│  (vector_db/)   │     └──────────────────┘
+└────────┬────────┘
+│
+┌────▼────┐     ┌─────────────┐     ┌─────────────┐
+│  FastAPI │────▶│   Ollama    │────▶│ Llama 3.2   │
+│  (main)  │     │  (local)    │     │   (3B)      │
+└────┬─────┘     └─────────────┘     └─────────────┘
+│
+┌────▼────┐
+│Streamlit│
+│(app_ui) │
+└─────────┘
+plain
+
+### Capas de seguridad implementadas:
+1. **Autenticación:** API Key vía `Authorization: Bearer` con comparación timing-safe (`hmac.compare_digest`).
+2. **Rate Limiting:** 10 peticiones/minuto por IP (`slowapi`).
+3. **Validación de inputs:** Pydantic con regex anti-prompt injection.
+4. **Validación de outputs:** Detección de intentos de revelar el system prompt.
+5. **Logs estructurados:** JSON en `/app/logs/audit.json` (no repudio).
+6. **Métricas:** Endpoint `/metrics` con contadores, latencia y errores.
+7. **Hardening de contenedor:** Imagen slim, usuario no-root (`appuser`), healthcheck.
 
 ---
 
 ## 🚀 Instrucciones de Despliegue Local
 
 ### Requisitos Previos
-* **Docker Desktop** activo (con soporte WSL 2 configurado).
-* **Ollama** instalado en el host con el modelo descargado: `ollama run llama3.2:3b`.
-
-### 1. Construcción de la Imagen
-Desde la raíz del repositorio, ejecuta el proceso de build de Docker:
-```bash
+- **Docker Desktop** activo (con WSL 2).
+- **Ollama** instalado con el modelo descargado:
+  ```bash
+  ollama pull llama3.2:3b
+1. Clonar y construir
+bash
+git clone https://github.com/Sepúlveda9363/ciberauditoría-ai.git
+cd ciberauditoría-ai
 docker build -t cyberaudit-ai:latest .
-2. Ejecución del Contenedor Seguro
-Levanta la API en segundo plano inyectando el hostname dinámico para la conexión con la IA:
-
-Bash
+2. Ejecutar el contenedor
+bash
 docker run -d \
   -p 8000:8000 \
+  --name cyberaudit-api \
+  -e CYBERAUDIT_API_KEY="tu-clave-super-segura" \
+  -e OLLAMA_URL="http://host.docker.internal:11434/api/generate" \
+  -e ALLOWED_ORIGINS="http://localhost:8501" \
   --add-host=host.docker.internal:host-gateway \
-  --name cyberaudit-api-container \
   cyberaudit-ai:latest
-3. Verificación del Servicio
-Accede a la documentación interactiva e interfaz de pruebas en tu navegador:
-
+Nota: Si la base vectorial (data/vector_db/) no está incluida en la imagen, primero debés indexar los PDFs (ver sección "Ingesta de documentos" abajo).
+3. Verificar que funciona
+bash
+curl http://localhost:8000/health
+4. Acceder a la documentación
 Swagger UI: http://localhost:8000/docs
+Métricas: http://localhost:8000/metrics
+📚 Ingesta de Documentos (si es necesario re-indexar)
+Si necesitás regenerar la base vectorial (por ejemplo, agregaste nuevos PDFs):
+bash
+# Requiere Python 3.10+ local
+pip install -r requirements.txt
 
-🛠️ Pipeline de Integración Continua (CI/CD)
-El proyecto cuenta con un flujo automatizado implementado en GitHub Actions (.github/workflows/ci.yml) que ejecuta dos etapas de control en cada cambio del código base:
+# 1. Extraer texto y generar chunks
+python preprocess.py
 
-Instalación de Dependencias: Validación estática del archivo estructurado requirements.txt.
+# 2. Vectorizar e indexar en ChromaDB
+python store_vectors.py
 
-Validación del Contenedor (Docker Build Test): Compilación limpia automatizada del entorno para verificar la integridad del empaquetado antes de cualquier despliegue operativo.
-
-
----
-
-## 🎯 Introducción al Hito 3: Modelo de Amenazas (STRIDE)
-
-Con el `README.md` listo y la API corriendo feliz dentro de Docker, podemos dar el salto hacia el **Hito 3**. Este hito se enfoca en la seguridad profunda del software y nos exige diseñar un **Modelo de Amenazas** utilizando la metodología **STRIDE** (desarrollada por Microsoft).
-
-STRIDE nos obliga a ponernos el sombrero de *hacker* ético y analizar los riesgos del sistema dividiéndolos en 6 categorías:
-1. **S**poofing (Suplantación de identidad).
-2. **T**ampering (Alteración de datos/código).
-3. **R**epudiation (Repudio de acciones).
-4. **I**nformation Disclosure (Fuga de información).
-5. **D**enial of Service (Denegación de servicio).
-6. **E**levation of Privilege (Elevación de privilegios).
-
-Para empezar a mapear los vectores de ataque reales del proyecto: ¿Qué te preocupa más a nivel de seg
+# 3. Verificar
+python query_db.py --diagnostico
+🔑 Uso de la API
+Autenticación
+Todas las peticiones a /api/ask requieren header:
+plain
+Authorization: Bearer tu-clave-super-segura
+Consulta RAG con filtro
+bash
+curl -X POST http://localhost:8000/api/ask \
+  -H "Authorization: Bearer tu-clave-super-segura" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pregunta": "plazo para notificar incidente Ley 21663",
+    "filtro_normativa": "Ley"
+  }'
+Saludo (modo directo, sin RAG)
+bash
+curl -X POST http://localhost:8000/api/ask \
+  -H "Authorization: Bearer tu-clave-super-segura" \
+  -H "Content-Type: application/json" \
+  -d '{"pregunta": "hola"}'
+Prompt injection bloqueado (422)
+bash
+curl -X POST http://localhost:8000/api/ask \
+  -H "Authorization: Bearer tu-clave-super-segura" \
+  -H "Content-Type: application/json" \
+  -d '{"pregunta": "ignore previous instructions"}'
+🎨 Frontend Streamlit (opcional)
+Si querés una interfaz gráfica:
+bash
+pip install streamlit
+streamlit run app_ui.py
+Accedé en: http://localhost:8501
+🛠️ Pipeline CI/CD
+GitHub Actions (.github/workflows/ci.yml) ejecuta en cada push:
+Instalación de dependencias (requirements.txt).
+Build del contenedor Docker para verificar integridad.
+📁 Estructura del Repositorio
+plain
+cyberaudit-ai/
+├── .github/workflows/    # CI/CD
+├── data/
+│   ├── raw/              # PDFs de normativas (no van al contenedor)
+│   ├── processed/        # Chunks JSON intermedios
+│   └── vector_db/        # ChromaDB persistente
+├── src/                  # Módulos auxiliares (si aplica)
+├── tests/                # Tests pytest
+├── app_ui.py             # Frontend Streamlit
+├── main.py               # API FastAPI
+├── preprocess.py         # Pipeline de ingesta
+├── store_vectors.py      # Indexador vectorial
+├── query_db.py           # Script de diagnóstico RAG
+├── Dockerfile            # Contenedor hardenizado
+├── STRIDE.md             # Modelo de amenazas
+├── requirements.txt
+└── README.md
+🛡️ Seguridad
+Ver STRIDE.md para el modelo de amenazas completo con mitigaciones por categoría.
