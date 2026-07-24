@@ -52,20 +52,24 @@ CyberAudit AI es una solución de software diseñada bajo criterios de **Segurid
 └─────────┘
 plain
 
-### Capas de seguridad implementadas:
-1. **Autenticación:** API Key vía `Authorization: Bearer` con comparación timing-safe (`hmac.compare_digest`).
-2. **Rate Limiting:** 10 peticiones/minuto por IP (`slowapi`).
-3. **Validación de inputs:** Pydantic con regex anti-prompt injection.
-4. **Validación de outputs:** Detección de intentos de revelar el system prompt.
-5. **Logs estructurados:** JSON en `/app/logs/audit.json` (no repudio).
-6. **Métricas:** Endpoint `/metrics` con contadores, latencia y errores.
-7. **Hardening de contenedor:** Imagen slim, usuario no-root (`appuser`), healthcheck.
+### Capas de seguridad implementadas
+
+| # | Control | Implementación |
+|---|---------|----------------|
+| 1 | **Autenticación** | API Key vía `Authorization: Bearer` con comparación timing-safe (`hmac.compare_digest`). |
+| 2 | **Rate Limiting** | 10 peticiones/minuto por IP (`slowapi`). |
+| 3 | **Validación de inputs** | Pydantic con regex anti-prompt injection. |
+| 4 | **Validación de outputs** | Detección de intentos de revelar el system prompt. |
+| 5 | **Logs estructurados** | JSON en `/app/logs/audit.json` (no repudio). |
+| 6 | **Métricas** | Endpoint `/metrics` con contadores, latencia y errores. |
+| 7 | **Hardening** | Imagen slim, usuario no-root (`appuser`), healthcheck. |
 
 ---
 
 ## 🚀 Instrucciones de Despliegue Local
 
 ### Requisitos Previos
+
 - **Docker Desktop** activo (con WSL 2).
 - **Ollama** instalado con el modelo descargado:
   ```bash
@@ -92,7 +96,7 @@ curl http://localhost:8000/health
 4. Acceder a la documentación
 Swagger UI: http://localhost:8000/docs
 Métricas: http://localhost:8000/metrics
-📚 Ingesta de Documentos (si es necesario re-indexar)
+📚 Ingesta de Documentos
 Si necesitás regenerar la base vectorial (por ejemplo, agregaste nuevos PDFs):
 bash
 # Requiere Python 3.10+ local
@@ -109,7 +113,7 @@ python query_db.py --diagnostico
 🔑 Uso de la API
 Autenticación
 Todas las peticiones a /api/ask requieren header:
-plain
+http
 Authorization: Bearer tu-clave-super-segura
 Consulta RAG con filtro
 bash
