@@ -42,6 +42,11 @@ def detectar_normativa(nombre_archivo: str) -> Dict[str, str]:
     reglas = [
         (r"ley-?21663|ley marco", {"tipo": "Ley", "pais": "Chile", "tema": "Ciberseguridad", "organismo": "Ministerio del Interior"}),
         (r"ley-?21719", {"tipo": "Ley", "pais": "Chile", "tema": "Ciberseguridad", "organismo": "Congreso Nacional"}),
+        # ← NUEVAS LEYES AQUÍ
+        (r"ley-?21459|delitos?.informaticos", {"tipo": "Ley", "pais": "Chile", "tema": "Delitos Informáticos", "organismo": "Congreso Nacional"}),
+        (r"ley-?19628|proteccion.*datos|datos.personales", {"tipo": "Ley", "pais": "Chile", "tema": "Protección de Datos Personales", "organismo": "Congreso Nacional"}),
+        (r"ley-?19799|firma.electronica|documento.electronico", {"tipo": "Ley", "pais": "Chile", "tema": "Firma Digital", "organismo": "Congreso Nacional"}),
+        # ← FIN NUEVAS LEYES
         (r"cis.?control", {"tipo": "Framework", "organismo": "CIS", "tema": "Controles de Seguridad", "pais": "Internacional"}),
         (r"owasp.*llm", {"tipo": "Guía", "organismo": "OWASP", "tema": "IA/LLM Security", "pais": "Internacional"}),
         (r"owasp.*top.?10", {"tipo": "Guía", "organismo": "OWASP", "tema": "AppSec", "pais": "Internacional"}),
