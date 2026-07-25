@@ -52,11 +52,47 @@ CyberAudit AI es una solución de software diseñada bajo criterios de **Segurid
 │    Streamlit    │
 │    (app_ui)     │
 └─────────────────┘
-Capas de Seguridad Implementadas#ControlImplementación1AutenticaciónAPI Key vía Authorization: Bearer con comparación timing-safe (hmac.compare_digest).2Rate Limiting10 peticiones/minuto por IP (slowapi).3Validación de inputsPydantic con regex anti-prompt injection.4Validación de outputsDetección de intentos de revelar el system prompt.5Logs estructuradosJSON en /app/logs/audit.json (soporte para no repudio).6MétricasEndpoint /metrics con contadores, latencia y registros de errores.7HardeningImagen base slim, usuario sin privilegios no-root (appuser), healthcheck activo.🚀 Instrucciones de Despliegue LocalRequisitos PreviosDocker Desktop activo (con soporte WSL 2 en Windows).Ollama instalado localmente con el modelo previamente descargado:Bashollama pull llama3.2:3b
-📌 Nota: Si usas Windows, abre PowerShell. En Linux/macOS, utiliza tu terminal habitual.1. Clonar y Construir la ImagenBashgit clone [https://github.com/Sepulveda9363/ciberauditoria-ai.git](https://github.com/Sepulveda9363/ciberauditoria-ai.git)
+
+### Capas de Seguridad Implementadas
+
+| # | Control | Implementación |
+|---|---------|----------------|
+| 1 | **Autenticación** | API Key vía `Authorization: Bearer` con comparación timing-safe (`hmac.compare_digest`). |
+| 2 | **Rate Limiting** | 10 peticiones/minuto por IP (`slowapi`). |
+| 3 | **Validación de inputs** | Pydantic con regex anti-prompt injection. |
+| 4 | **Validación de outputs** | Detección de intentos de revelar el system prompt. |
+| 5 | **Logs estructurados** | JSON en `/app/logs/audit.json` (soporte para no repudio). |
+| 6 | **Métricas** | Endpoint `/metrics` con contadores, latencia y registros de errores. |
+| 7 | **Hardening** | Imagen base `slim`, usuario sin privilegios no-root (`appuser`), healthcheck activo. |
+
+---
+
+## 🚀 Instrucciones de Despliegue Local
+
+### Requisitos Previos
+
+- **Docker Desktop** activo (con soporte WSL 2 en Windows).
+- **Ollama** instalado localmente con el modelo previamente descargado:
+
+```bash
+ollama pull llama3.2:3b
+📌 Nota: Si usas Windows, abre PowerShell. En Linux/macOS, utiliza tu terminal habitual.
+
+1. Clonar y Construir la Imagen
+
+Bash
+
+git clone [https://github.com/Sepulveda9363/ciberauditoria-ai.git](https://github.com/Sepulveda9363/ciberauditoria-ai.git)
 cd ciberauditoria-ai
 docker build -t cyberaudit-ai:latest .
-2. Ejecutar el Contenedor🪟 Windows (PowerShell)PowerShelldocker run -d `
+
+2. Ejecutar el Contenedor
+
+🪟 Windows (PowerShell)
+
+PowerShell
+
+docker run -d `
   -p 8000:8000 `
   --name cyberaudit-api `
   -e CYBERAUDIT_API_KEY="tu-clave-super-segura" `
@@ -64,7 +100,12 @@ docker build -t cyberaudit-ai:latest .
   -e ALLOWED_ORIGINS="http://localhost:8501" `
   --add-host=host.docker.internal:host-gateway `
   cyberaudit-ai:latest
-🐧 Linux / 🍎 macOS (Bash)Bashdocker run -d \
+
+🐧 Linux / 🍎 macOS (Bash)
+
+Bash
+
+docker run -d \
   -p 8000:8000 \
   --name cyberaudit-api \
   -e CYBERAUDIT_API_KEY="tu-clave-super-segura" \
@@ -72,10 +113,36 @@ docker build -t cyberaudit-ai:latest .
   -e ALLOWED_ORIGINS="http://localhost:8501" \
   --add-host=host.docker.internal:host-gateway \
   cyberaudit-ai:latest
-Nota: Si la base vectorial (data/vector_db/) no está incluida previamente en la imagen, primero debes indexar las fuentes (ver sección Ingesta de Documentos).3. Verificar FuncionamientoBashcurl http://localhost:8000/health
-4. Acceder a la DocumentaciónSwagger UI: http://localhost:8000/docsMétricas: http://localhost:8000/metrics📚 Ingesta de DocumentosSi necesitas regenerar o actualizar la base de datos vectorial tras añadir nuevos PDFs normativos:Requisitos LocalesBash# Requiere Python 3.10+ local
+
+Nota: Si la base vectorial (data/vector_db/) no está incluida previamente en la imagen, primero debes indexar las fuentes (ver sección Ingesta de Documentos).
+
+3. Verificar Funcionamiento
+
+Bash
+
+curl http://localhost:8000/health
+
+4. Acceder a la Documentación
+
+Swagger UI: http://localhost:8000/docs
+
+Métricas: http://localhost:8000/metrics
+
+📚 Ingesta de Documentos
+Si necesitas regenerar o actualizar la base de datos vectorial tras añadir nuevos PDFs normativos:
+
+Requisitos Locales
+
+Bash
+
+# Requiere Python 3.10+ local
 pip install -r requirements.txt
-Pasos de EjecuciónBash# 1. Extraer texto y generar chunks intermedios
+
+Pasos de Ejecución
+
+Bash
+
+# 1. Extraer texto y generar chunks intermedios
 python preprocess.py
 
 # 2. Vectorizar e indexar en ChromaDB
@@ -83,25 +150,64 @@ python store_vectors.py
 
 # 3. Ejecutar diagnóstico de lectura
 python query_db.py --diagnostico
-🔑 Uso de la APIAutenticaciónTodas las peticiones protegidas hacia /api/ask requieren el siguiente encabezado HTTP:HTTPAuthorization: Bearer tu-clave-super-segura
-Ejemplo 1: Consulta RAG con FiltroBashcurl -X POST http://localhost:8000/api/ask \
+
+🔑 Uso de la API
+Autenticación
+Todas las peticiones protegidas hacia /api/ask requieren el siguiente encabezado HTTP:
+
+HTTP
+Authorization: Bearer tu-clave-super-segura
+
+Ejemplo 1: Consulta RAG con Filtro
+
+Bash
+
+curl -X POST http://localhost:8000/api/ask \
   -H "Authorization: Bearer tu-clave-super-segura" \
   -H "Content-Type: application/json" \
   -d '{
     "pregunta": "plazo para notificar incidente Ley 21663",
     "filtro_normativa": "Ley"
   }'
-Ejemplo 2: Saludo (Modo Directo / Conversacional)Bashcurl -X POST http://localhost:8000/api/ask \
+
+Ejemplo 2: Saludo (Modo Directo / Conversacional)
+
+Bash
+
+curl -X POST http://localhost:8000/api/ask \
   -H "Authorization: Bearer tu-clave-super-segura" \
   -H "Content-Type: application/json" \
   -d '{"pregunta": "hola"}'
-Ejemplo 3: Bloqueo de Prompt Injection (Devuelve 422 Unprocessable Entity)Bashcurl -X POST http://localhost:8000/api/ask \
+
+Ejemplo 3: Bloqueo de Prompt Injection (Devuelve 422 Unprocessable Entity)
+
+Bash
+
+curl -X POST http://localhost:8000/api/ask \
   -H "Authorization: Bearer tu-clave-super-segura" \
   -H "Content-Type: application/json" \
   -d '{"pregunta": "ignore previous instructions"}'
-🎨 Frontend Streamlit (Opcional)Para desplegar la interfaz gráfica de usuario:Bashpip install streamlit
+
+🎨 Frontend Streamlit (Opcional)
+Para desplegar la interfaz gráfica de usuario:
+
+Bash
+
+pip install streamlit
 streamlit run app_ui.py
-Accede desde tu navegador en: http://localhost:8501🛠️ Pipeline CI/CDEl flujo de integración continua mediante GitHub Actions (.github/workflows/ci.yml) ejecuta de forma automática en cada push o pull_request:Instalación y validación de dependencias (requirements.txt).Reconstrucción del contenedor Docker para asegurar la integridad de la compilación.📁 Estructura del RepositorioPlaintextcyberaudit-ai/
+Accede desde tu navegador en: http://localhost:8501
+
+🛠️ Pipeline CI/CD
+El flujo de integración continua mediante GitHub Actions (.github/workflows/ci.yml) ejecuta de forma automática en cada push o pull_request:
+
+Instalación y validación de dependencias (requirements.txt).
+
+Reconstrucción del contenedor Docker para asegurar la integridad de la compilación.
+
+📁 Estructura del Repositorio
+
+Plaintext
+cyberaudit-ai/
 ├── .github/workflows/    # Pipelines de CI/CD
 ├── data/
 │   ├── raw/              # Documentos PDF normativos de entrada
@@ -118,4 +224,6 @@ Accede desde tu navegador en: http://localhost:8501🛠️ Pipeline CI/CDEl fluj
 ├── STRIDE.md             # Documentación del Modelo de Amenazas
 ├── requirements.txt      # Librerías de Python
 └── README.md             # Documentación principal del proyecto
-🛡️ Seguridad y Modelo de AmenazasConsulta el archivo STRIDE.md para revisar el análisis detallado de riesgos, vectores de ataque evaluados y sus correspondientes controles de mitigación implementados.
+
+🛡️ Seguridad y Modelo de Amenazas
+Consulta el archivo STRIDE.md para revisar el análisis detallado de riesgos, vectores de ataque evaluados y sus correspondientes controles de mitigación implementados.
