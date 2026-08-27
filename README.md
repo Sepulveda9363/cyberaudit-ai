@@ -195,6 +195,7 @@ Bash
 
 pip install streamlit
 streamlit run app_ui.py
+O si falla el comando anterior python -m streamlit run app_ui.py
 Accede desde tu navegador en: http://localhost:8501
 
 🛠️ Pipeline CI/CD
